@@ -817,7 +817,7 @@ public final class MainFrame extends javax.swing.JFrame implements ActionListene
             PatchFrame pf = new PatchFrame(patchController, qcmdprocessor);
             patchView.setFileNamePath(f.getPath());
             patchView.PostConstructor();
-            patchModel.WriteCode();
+            patchController.WriteCode();
             qcmdprocessor.WaitQueueFinished();
             Thread.sleep(500);
             for(String module : patchController.patchModel.getModules()) {

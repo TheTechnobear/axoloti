@@ -5,26 +5,33 @@ import axoloti.object.AxoObjectAbstract;
 import axoloti.object.AxoObjectInstanceAbstract;
 import axoloti.objectviews.IAxoObjectInstanceView;
 import axoloti.outlets.IOutletInstanceView;
+import axoloti.parameters.ParameterInstance;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import qcmds.QCmdChangeWorkingDirectory;
 import qcmds.QCmdCompileModule;
 import qcmds.QCmdCompilePatch;
+import qcmds.QCmdCreateDirectory;
+import qcmds.QCmdLock;
 import qcmds.QCmdProcessor;
 import qcmds.QCmdRecallPreset;
-import qcmds.QCmdUploadFile;
+import qcmds.QCmdStart;
+import qcmds.QCmdStop;
+import qcmds.QCmdUploadPatch;
 
 public class PatchController {
 
     public PatchModel patchModel;
-    public PatchView patchView;
+    public PatchView  patchView;
     public PatchFrame patchFrame;
+    public Platform   platform;
 
     public PatchController() {
+        platform = new PlatformAxoloti();
     }
 
     public void setPatchModel(PatchModel patchModel) {
@@ -65,109 +72,61 @@ public class PatchController {
     public void ShowPreset(int i) {
         patchView.ShowPreset(i);
     }
-
-    public void Compile() {
-        for(String module : patchModel.getModules()) {
-           GetQCmdProcessor().AppendToQueue(new QCmdCompileModule(this,
-                   module, 
-                   patchModel.getModuleDir(module)));
+    
+    public void GoLive() {
+        if (patchView != null) {
+            patchView.Unlock();
         }
-        GetQCmdProcessor().AppendToQueue(new QCmdCompilePatch(this));
+
+        QCmdProcessor qCmdProcessor = GetQCmdProcessor();
+
+        ShowPreset(0);
+        setPresetUpdatePending(false);
+        for (AxoObjectInstanceAbstract o : patchModel.getObjectInstances()) {
+            for (ParameterInstance pi : o.getParameterInstances()) {
+                pi.ClearNeedsTransmit();
+            }
+        }
+
+        // TODO this should be on platform
+        qCmdProcessor.AppendToQueue(new QCmdStop());
+        if (USBBulkConnection.GetConnection().GetSDCardPresent()) {
+
+            String f = "/" + getSDCardPath();
+            //System.out.println("pathf" + f);
+            if (SDCardInfo.getInstance().find(f) == null) {
+                qCmdProcessor.AppendToQueue(new QCmdCreateDirectory(f));
+            }
+            qCmdProcessor.AppendToQueue(new QCmdChangeWorkingDirectory(f));
+            UploadDependentFiles(f);
+        } else {
+            // issue warning when there are dependent files
+            ArrayList<SDFileReference> files = patchModel.GetDependendSDFiles();
+            if (files.size() > 0) {
+                Logger.getLogger(PatchView.class.getName()).log(Level.SEVERE, "Patch requires file {0} on SDCard, but no SDCard mounted", files.get(0).targetPath);
+            }
+        }
+        platform.GoLive(patchModel,qCmdProcessor, this);
+    }
+    
+    public void WriteCode() {
+        platform.WriteCode(patchModel);
+    }
+
+    public File getBinFile() {
+        return platform.getBinFile();
+    }    
+    
+    public void Compile() {
+        platform.Compile(patchModel,GetQCmdProcessor(),this);
     }
 
     void UploadDependentFiles(String sdpath) {
-        ArrayList<SDFileReference> files = patchModel.GetDependendSDFiles();
-        for (SDFileReference fref : files) {
-            File f = fref.localfile;
-            if (f == null) {
-                Logger.getLogger(PatchModel.class.getName()).log(Level.SEVERE, "File not resolved: {0}", fref.targetPath);
-                continue;
-            }
-            if (!f.exists()) {
-                Logger.getLogger(PatchModel.class.getName()).log(Level.SEVERE, "File does not exist: {0}", f.getName());
-                continue;
-            }
-            if (!f.canRead()) {
-                Logger.getLogger(PatchModel.class.getName()).log(Level.SEVERE, "Can't read file {0}", f.getName());
-                continue;
-            }
-            String targetfn = fref.targetPath;
-            if (targetfn.isEmpty()) {
-                Logger.getLogger(PatchModel.class.getName()).log(Level.SEVERE, "Target filename empty {0}", f.getName());
-                continue;
-            }
-            if (targetfn.charAt(0) != '/') {
-                targetfn = sdpath + "/" + fref.targetPath;
-            }
-            if (!SDCardInfo.getInstance().exists(targetfn, f.lastModified(), f.length())) {
-                GetQCmdProcessor().AppendToQueue(new qcmds.QCmdGetFileInfo(targetfn));
-                GetQCmdProcessor().WaitQueueFinished();
-                GetQCmdProcessor().AppendToQueue(new qcmds.QCmdPing());
-                GetQCmdProcessor().WaitQueueFinished();
-                if (!SDCardInfo.getInstance().exists(targetfn, f.lastModified(), f.length())) {
-                    if (f.length() > 8 * 1024 * 1024) {
-                        Logger.getLogger(PatchModel.class.getName()).log(Level.INFO, "file {0} is larger than 8MB, skip uploading", f.getName());
-                        continue;
-                    }
-                    for (int i = 1; i < targetfn.length(); i++) {
-                        if (targetfn.charAt(i) == '/') {
-                            GetQCmdProcessor().AppendToQueue(new qcmds.QCmdCreateDirectory(targetfn.substring(0, i)));
-                            GetQCmdProcessor().WaitQueueFinished();
-                        }
-                    }
-                    GetQCmdProcessor().AppendToQueue(new QCmdUploadFile(f, targetfn));
-                } else {
-                    Logger.getLogger(PatchModel.class.getName()).log(Level.INFO, "file {0} matches timestamp and size, skip uploading", f.getName());
-                }
-            } else {
-                Logger.getLogger(PatchModel.class.getName()).log(Level.INFO, "file {0} matches timestamp and size, skip uploading", f.getName());
-            }
-        }
+        platform.UploadDependentFiles(patchModel,GetQCmdProcessor(),sdpath);
     }
 
     public void UploadToSDCard(String sdfilename) {
-        patchModel.WriteCode();
-        Logger.getLogger(PatchFrame.class.getName()).log(Level.INFO, "sdcard filename:{0}", sdfilename);
-        QCmdProcessor qcmdprocessor = QCmdProcessor.getQCmdProcessor();
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdStop());
-        for(String module : patchModel.getModules()) {
-           qcmdprocessor.AppendToQueue(new QCmdCompileModule(this,
-                   module,
-                   patchModel.getModuleDir(module)
-           ));
-        }
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdCompilePatch(this));
-        // create subdirs...
-
-        for (int i = 1; i < sdfilename.length(); i++) {
-            if (sdfilename.charAt(i) == '/') {
-                qcmdprocessor.AppendToQueue(new qcmds.QCmdCreateDirectory(sdfilename.substring(0, i)));
-                qcmdprocessor.WaitQueueFinished();
-            }
-        }
-        qcmdprocessor.WaitQueueFinished();
-        Calendar cal;
-        if (patchModel.isDirty()) {
-            cal = Calendar.getInstance();
-        } else {
-            cal = Calendar.getInstance();
-            if (getFileNamePath() != null && !getFileNamePath().isEmpty()) {
-                File f = new File(getFileNamePath());
-                if (f.exists()) {
-                    cal.setTimeInMillis(f.lastModified());
-                }
-            }
-        }
-        qcmdprocessor.AppendToQueue(new qcmds.QCmdUploadFile(patchModel.getBinFile(), sdfilename, cal));
-
-        String dir;
-        int i = sdfilename.lastIndexOf("/");
-        if (i > 0) {
-            dir = sdfilename.substring(0, i);
-        } else {
-            dir = "";
-        }
-        UploadDependentFiles(dir);
+        platform.UploadToSDCard(patchModel, sdfilename,QCmdProcessor.getQCmdProcessor(), this);
     }
 
     public void UploadToSDCard() {
@@ -299,9 +258,6 @@ public class PatchController {
         return FileNameNoExt;
     }
 
-    public void WriteCode() {
-        patchModel.WriteCode();
-    }
 
     public void setPresetUpdatePending(boolean updatePending) {
         patchModel.presetUpdatePending = updatePending;

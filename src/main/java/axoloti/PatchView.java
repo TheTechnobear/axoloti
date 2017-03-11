@@ -266,49 +266,8 @@ public abstract class PatchView implements ModelChangedListener {
     }
 
     void GoLive() {
-        PatchView patchView = getPatchController().patchView;
-        if (patchView != null) {
-            patchView.Unlock();
-        }
+        patchController.GoLive();
 
-        QCmdProcessor qCmdProcessor = getPatchController().GetQCmdProcessor();
-
-        qCmdProcessor.AppendToQueue(new QCmdStop());
-        if (USBBulkConnection.GetConnection().GetSDCardPresent()) {
-
-            String f = "/" + getPatchController().getSDCardPath();
-            //System.out.println("pathf" + f);
-            if (SDCardInfo.getInstance().find(f) == null) {
-                qCmdProcessor.AppendToQueue(new QCmdCreateDirectory(f));
-            }
-            qCmdProcessor.AppendToQueue(new QCmdChangeWorkingDirectory(f));
-            getPatchController().UploadDependentFiles(f);
-        } else {
-            // issue warning when there are dependent files
-            ArrayList<SDFileReference> files = getPatchController().patchModel.GetDependendSDFiles();
-            if (files.size() > 0) {
-                Logger.getLogger(PatchView.class.getName()).log(Level.SEVERE, "Patch requires file {0} on SDCard, but no SDCard mounted", files.get(0).targetPath);
-            }
-        }
-        getPatchController().ShowPreset(0);
-        getPatchController().setPresetUpdatePending(false);
-        for (AxoObjectInstanceAbstract o : getPatchController().patchModel.getObjectInstances()) {
-            for (ParameterInstance pi : o.getParameterInstances()) {
-                pi.ClearNeedsTransmit();
-            }
-        }
-        getPatchController().WriteCode();
-        qCmdProcessor.setPatchController(null);
-        for(String module : getPatchController().patchModel.getModules()) {
-           qCmdProcessor.AppendToQueue(
-                   new QCmdCompileModule(getPatchController(),
-                           module, 
-                           getPatchController().patchModel.getModuleDir(module)));
-        }
-        qCmdProcessor.AppendToQueue(new QCmdCompilePatch(getPatchController()));
-        qCmdProcessor.AppendToQueue(new QCmdUploadPatch());
-        qCmdProcessor.AppendToQueue(new QCmdStart(getPatchController()));
-        qCmdProcessor.AppendToQueue(new QCmdLock(getPatchController()));
     }
 
     void SetDSPLoad(int pct) {

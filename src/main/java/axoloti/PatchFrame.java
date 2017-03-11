@@ -908,7 +908,7 @@ public class PatchFrame extends javax.swing.JFrame implements DocumentWindow, Co
     }//GEN-LAST:event_jCheckBoxMenuItemCordsInBackgroundActionPerformed
 
     private void jMenuGenerateCodeActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuGenerateCodeActionPerformed
-        getPatchModel().WriteCode();
+        patchController.WriteCode();
     }//GEN-LAST:event_jMenuGenerateCodeActionPerformed
 
     private void jMenuCompileCodeActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuCompileCodeActionPerformed
@@ -1014,7 +1014,7 @@ public class PatchFrame extends javax.swing.JFrame implements DocumentWindow, Co
     }//GEN-LAST:event_jMenuSaveClipActionPerformed
 
     private void jMenuItemUploadInternalFlashActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuItemUploadInternalFlashActionPerformed
-        getPatchModel().WriteCode();
+        patchController.WriteCode();
         qcmdprocessor.AppendToQueue(new qcmds.QCmdStop());
         for(String module : getPatchModel().getModules()) {
            qcmdprocessor.AppendToQueue(
@@ -1052,7 +1052,7 @@ public class PatchFrame extends javax.swing.JFrame implements DocumentWindow, Co
     }//GEN-LAST:event_jMenuSaveCopyActionPerformed
 
     private void jMenuGenerateAndCompileCodeActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jMenuGenerateAndCompileCodeActionPerformed
-        getPatchModel().WriteCode();
+        patchController.WriteCode();
         patchController.Compile();
     }//GEN-LAST:event_jMenuGenerateAndCompileCodeActionPerformed
 
